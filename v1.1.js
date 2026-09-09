@@ -17,13 +17,6 @@ var REG_SDK_FB = [
 ];
 var _regDb = null, _regData = {};
 
-function regStaffDaBody(){ var c=document.body.className||''; return /\badmin\b/.test(c) || /\b(g1|g2|g3|g4)\b/.test(c); }
-function regIsStaff(){
- try{ var o=localStorage.getItem('af_staff_override'); if(o==='1')return true; if(o==='0')return false; }catch(e){}
- if(window.HxHFramework&&window.HxHFramework.groups&&window.HxHFramework.groups.isStaff){ try{return window.HxHFramework.groups.isStaff();}catch(e){} }
- return regStaffDaBody();
-}
-
 function regCarica(url){ return new Promise(function(ok,ko){ var s=document.createElement('script'); s.src=url; s.async=false; s.onload=function(){ok(url);}; s.onerror=function(){ko();}; document.head.appendChild(s); }); }
 function regCaricaSDK(){
  if(window.firebase&&window.firebase.database) return Promise.resolve(true);
@@ -40,7 +33,6 @@ function regInit(){
   var fb=window.firebase;
   if(!fb.apps.length) fb.initializeApp(REG_FB_CONFIG);
   _regDb=fb.database();
-  if(regIsStaff()) document.getElementById('reg-staff-tools').style.display='';
   regRicarica();
  });
 }
@@ -62,18 +54,26 @@ function regNomePg(pgId){ var p=_regData[pgId]; return (p&&p.nomeCorrente)?p.nom
 
 function regPopolaSelect(){
  var sel=document.getElementById('reg-pg-select');
- var merge=document.getElementById('reg-merge-target');
+ var selStaffer=document.getElementById('reg-staffer-select');
  var valPrec=sel.value;
- sel.innerHTML='<option value="__tutti__">— Tutti i PG (vista globale) —</option>';
- if(merge) merge.innerHTML='<option value="">— target —</option>';
+ var valStafPrec=selStaffer?selStaffer.value:'';
+ sel.innerHTML='<option value="__tutti__">— Tutti i PG —</option>';
  var ids=[]; for(var k in _regData){ if(_regData.hasOwnProperty(k)) ids.push(k); }
  ids.sort(function(a,b){ return regNomePg(a).localeCompare(regNomePg(b)); });
  for(var i=0;i<ids.length;i++){
-  var nome=regNomePg(ids[i]);
-  sel.innerHTML+='<option value="'+ids[i]+'">'+nome+'</option>';
-  if(merge) merge.innerHTML+='<option value="'+ids[i]+'">'+nome+'</option>';
+  sel.innerHTML+='<option value="'+ids[i]+'">'+regNomePg(ids[i])+'</option>';
  }
  if(valPrec){ for(var o=0;o<sel.options.length;o++){ if(sel.options[o].value===valPrec){ sel.selectedIndex=o; break; } } }
+ // Menù staffer: raccoglie tutti gli staffer distinti dai record
+ if(selStaffer){
+  var staffers={};
+  for(var k2 in _regData){ if(_regData.hasOwnProperty(k2)){ var recs=_regData[k2].records||{}; for(var rk in recs){ if(recs.hasOwnProperty(rk)){ var s=recs[rk].staffer; if(s) staffers[s]=true; } } } }
+  var lista=[]; for(var st in staffers){ if(staffers.hasOwnProperty(st)) lista.push(st); }
+  lista.sort(function(a,b){ return a.localeCompare(b); });
+  selStaffer.innerHTML='<option value="__tutti__">— Tutti gli staffer —</option>';
+  for(var l=0;l<lista.length;l++){ selStaffer.innerHTML+='<option value="'+lista[l]+'">'+lista[l]+'</option>'; }
+  if(valStafPrec){ for(var os=0;os<selStaffer.options.length;os++){ if(selStaffer.options[os].value===valStafPrec){ selStaffer.selectedIndex=os; break; } } }
+ }
 }
 
 function regRecordsDiPg(pgId){
@@ -105,73 +105,44 @@ function regRenderRecord(r, conNomePg){
 
 function regMostraPg(){
  var sel=document.getElementById('reg-pg-select');
+ var selStaffer=document.getElementById('reg-staffer-select');
  var pgId=sel.value;
+ var staffFiltro=selStaffer?selStaffer.value:'__tutti__';
  var cont=document.getElementById('reg-contenuto');
+
+ // Filtro staffer applicabile a una lista di record
+ function filtraStaffer(records){
+  if(!staffFiltro || staffFiltro==='__tutti__') return records;
+  var out=[]; for(var i=0;i<records.length;i++){ if(records[i].staffer===staffFiltro) out.push(records[i]); }
+  return out;
+ }
+ var etichettaStaffer = (staffFiltro && staffFiltro!=='__tutti__') ? ' — staffer: '+staffFiltro : '';
+
  if(pgId==='__tutti__'){
-  // Vista globale: tutti i record di tutti i PG, per data
   var tutti=[];
   for(var k in _regData){ if(_regData.hasOwnProperty(k)){ var rs=regRecordsDiPg(k); for(var i=0;i<rs.length;i++) tutti.push(rs[i]); } }
+  tutti=filtraStaffer(tutti);
   tutti.sort(function(a,b){ return (b.timestamp||0)-(a.timestamp||0); });
-  if(tutti.length===0){ cont.innerHTML='<div class="reg-card" style="text-align:center; color:#8FBEBA;">Nessun accredito registrato.</div>'; return; }
-  var h='<div class="reg-card"><h3 style="color:#CFF09E; margin:0 0 14px;">Tutti gli accrediti ('+tutti.length+')</h3>';
+  if(tutti.length===0){ cont.innerHTML='<div class="reg-card" style="text-align:center; color:#8FBEBA;">Nessun accredito'+(etichettaStaffer?' per questo staffer':' registrato')+'.</div>'; return; }
+  var h='<div class="reg-card"><h3 style="color:#CFF09E; margin:0 0 14px;">Tutti gli accrediti ('+tutti.length+')'+etichettaStaffer+'</h3>';
+  h+='<div class="reg-scroll">';
   for(var t=0;t<tutti.length;t++) h+=regRenderRecord(tutti[t], true);
-  h+='</div>';
+  h+='</div></div>';
   cont.innerHTML=h;
  } else {
-  var records=regRecordsDiPg(pgId);
+  var records=filtraStaffer(regRecordsDiPg(pgId));
   var nome=regNomePg(pgId);
   var p=_regData[pgId];
   var alias=(p&&p.aliasStorici)?p.aliasStorici:[];
-  var h='<div class="reg-card"><h3 style="color:#CFF09E; margin:0 0 6px;">'+nome+'</h3>';
+  var h='<div class="reg-card"><h3 style="color:#CFF09E; margin:0 0 6px;">'+nome+etichettaStaffer+'</h3>';
   if(alias.length>0) h+='<div style="color:#8FBEBA; font-size:0.82em; font-style:italic; margin-bottom:12px;">Ex: '+alias.join(', ')+'</div>';
-  if(records.length===0) h+='<p style="color:#8FBEBA;">Nessun accredito per questo PG.</p>';
-  else for(var r=0;r<records.length;r++) h+=regRenderRecord(records[r], false);
+  if(records.length===0) h+='<p style="color:#8FBEBA;">Nessun accredito'+(etichettaStaffer?' di questo staffer':'')+' per questo PG.</p>';
+  else { h+='<div class="reg-scroll">'; for(var r=0;r<records.length;r++) h+=regRenderRecord(records[r], false); h+='</div>'; }
   h+='</div>';
   cont.innerHTML=h;
  }
 }
 
-function regRinomina(){
- if(!regIsStaff()){ alert('Solo lo staff può rinominare.'); return; }
- var sel=document.getElementById('reg-pg-select'); var pgId=sel.value;
- if(pgId==='__tutti__'){ alert('Seleziona prima un PG specifico.'); return; }
- var nuovo=(document.getElementById('reg-rinomina-nome').value||'').trim();
- if(!nuovo){ alert('Inserisci il nuovo nome.'); return; }
- var p=_regData[pgId]||{};
- var vecchio=p.nomeCorrente||null;
- var alias=p.aliasStorici||[];
- if(vecchio && alias.indexOf(vecchio)===-1) alias.push(vecchio);
- if(!confirm('Rinominare "'+(vecchio||pgId)+'" in "'+nuovo+'"? Lo storico resta intatto.')) return;
- _regDb.ref('accrediti/'+pgId).update({ nomeCorrente:nuovo, aliasStorici:alias }).then(function(){
-  document.getElementById('reg-rinomina-nome').value='';
-  regRicarica();
- }).catch(function(e){ alert('Errore: '+e.message); });
-}
-
-function regMerge(){
- if(!regIsStaff()){ alert('Solo lo staff può unire.'); return; }
- var sel=document.getElementById('reg-pg-select'); var da=sel.value;
- var target=document.getElementById('reg-merge-target').value;
- if(da==='__tutti__'||!target){ alert('Seleziona il PG da unire (in alto) e il target.'); return; }
- if(da===target){ alert('PG e target coincidono.'); return; }
- if(!confirm('Unire "'+regNomePg(da)+'" dentro "'+regNomePg(target)+'"? I record verranno spostati e il PG di origine rimosso. Operazione irreversibile.')) return;
- var origine=_regData[da]||{}; var recordsOrig=origine.records||{};
- var tgtRef=_regDb.ref('accrediti/'+target+'/records');
- // Sposta ogni record sotto il target
- var promises=[];
- for(var rk in recordsOrig){ if(recordsOrig.hasOwnProperty(rk)){ promises.push(tgtRef.push(recordsOrig[rk])); } }
- // Alias: il nome del PG di origine diventa alias del target
- var pTgt=_regData[target]||{}; var aliasT=pTgt.aliasStorici||[];
- var nomeOrig=origine.nomeCorrente; if(nomeOrig && aliasT.indexOf(nomeOrig)===-1) aliasT.push(nomeOrig);
- Promise.all(promises).then(function(){
-  return _regDb.ref('accrediti/'+target).update({ aliasStorici:aliasT });
- }).then(function(){
-  return _regDb.ref('accrediti/'+da).remove();
- }).then(function(){
-  // Log dell'operazione di merge nel target
-  return _regDb.ref('accrediti/'+target+'/records').push({ timestamp:Date.now(), staffer:'(sistema)', nomeAlMomento:regNomePg(target), modifiche:[{campo:'Merge', da:regNomePg(da), a:regNomePg(target), delta:null}] });
- }).then(function(){ regRicarica(); }).catch(function(e){ alert('Errore nel merge: '+e.message); });
-}
 
 // Avvio automatico quando il DOM e il markup della pagina sono pronti
 (function(){
