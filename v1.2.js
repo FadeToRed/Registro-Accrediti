@@ -95,7 +95,8 @@ function regRenderRecord(r, conNomePg){
  for(var i=0;i<mods.length;i++){
   var m=mods[i];
   h+='<div class="reg-mod"><b style="color:#CFF09E;">'+m.campo+':</b> ';
-  if(m.da===null||m.da===undefined) h+='aggiunto <b>'+m.a+'</b>';
+  if(m.delta==='info') h+='<b>'+m.a+'</b>';
+  else if(m.da===null||m.da===undefined) h+='aggiunto <b>'+m.a+'</b>';
   else { h+=m.da+' → <b>'+m.a+'</b>'; if(m.delta) h+=' <span style="color:#A8DBA8;">('+m.delta+')</span>'; }
   h+='</div>';
  }
